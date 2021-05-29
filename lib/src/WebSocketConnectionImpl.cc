@@ -119,7 +119,7 @@ void WebSocketConnectionImpl::sendWsData(const char *msg,
                                              masks_.size() * sizeof(uint32_t));
                 if (status == false)
                 {
-                    LOG_ERROR << "Failed to generate random numbers for "
+                    LOG_FATAL << "Failed to generate random numbers for "
                                  "WebSocket mask";
                     abort();
                 }
@@ -133,7 +133,7 @@ void WebSocketConnectionImpl::sendWsData(const char *msg,
             bool status = utils::secureRandomBytes(&random, sizeof(random));
             if (status == false)
             {
-                LOG_ERROR
+                LOG_FATAL
                     << "Failed to generate random numbers for WebSocket mask";
                 abort();
             }
