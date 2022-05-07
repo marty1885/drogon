@@ -457,7 +457,9 @@ void HttpAppFrameworkImpl::run()
     {
         char dirName[4];
         snprintf(dirName, sizeof(dirName), "%02x", i);
-        std::transform(dirName, dirName + 2, dirName, toupper);
+        std::transform(dirName, dirName + 2, dirName, [](unsigned char c) {
+            return toupper(c);
+        });
         utils::createPath(getUploadPath() + "/tmp/" + dirName);
     }
     if (runAsDaemon_)
@@ -491,6 +493,9 @@ void HttpAppFrameworkImpl::run()
             sleep(1);
             LOG_INFO << "start new process";
         }
+#ifdef __linux__
+        getLoop()->resetTimerQueue();
+#endif
         getLoop()->resetAfterFork();
 #endif
     }
@@ -992,11 +997,12 @@ HttpAppFramework &HttpAppFrameworkImpl::createRedisClient(
     size_t connectionNum,
     bool isFast,
     double timeout,
-    unsigned int db)
+    unsigned int db,
+    const std::string &username)
 {
     assert(!running_);
     redisClientManagerPtr_->createRedisClient(
-        name, ip, port, password, connectionNum, isFast, timeout, db);
+        name, ip, port, username, password, connectionNum, isFast, timeout, db);
     return *this;
 }
 void HttpAppFrameworkImpl::quit()

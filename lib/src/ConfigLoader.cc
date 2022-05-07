@@ -186,7 +186,7 @@ static void loadControllers(const Json::Value &controllers)
                 std::transform(strMethod.begin(),
                                strMethod.end(),
                                strMethod.begin(),
-                               tolower);
+                               [](unsigned char c) { return tolower(c); });
                 if (strMethod == "get")
                 {
                     constraints.push_back(Get);
@@ -502,7 +502,10 @@ static void loadDbClients(const Json::Value &dbClients)
     for (auto const &client : dbClients)
     {
         auto type = client.get("rdbms", "postgresql").asString();
-        std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+        std::transform(type.begin(),
+                       type.end(),
+                       type.begin(),
+                       [](unsigned char c) { return tolower(c); });
         auto host = client.get("host", "127.0.0.1").asString();
         auto port = client.get("port", 5432).asUInt();
         auto dbname = client.get("dbname", "").asString();
@@ -551,10 +554,17 @@ static void loadRedisClients(const Json::Value &redisClients)
 {
     if (!redisClients)
         return;
+    std::promise<std::string> promise;
+    auto future = promise.get_future();
     for (auto const &client : redisClients)
     {
         auto host = client.get("host", "127.0.0.1").asString();
+        trantor::Resolver::newResolver()->resolve(
+            host, [&promise](const trantor::InetAddress &address) {
+                promise.set_value(address.toIp());
+            });
         auto port = client.get("port", 6379).asUInt();
+        auto username = client.get("username", "").asString();
         auto password = client.get("passwd", "").asString();
         if (password.empty())
         {
@@ -569,8 +579,16 @@ static void loadRedisClients(const Json::Value &redisClients)
         auto isFast = client.get("is_fast", false).asBool();
         auto timeout = client.get("timeout", -1.0).asDouble();
         auto db = client.get("db", 0).asUInt();
-        drogon::app().createRedisClient(
-            host, port, name, password, connNum, isFast, timeout, db);
+        auto hostIp = future.get();
+        drogon::app().createRedisClient(hostIp,
+                                        port,
+                                        name,
+                                        password,
+                                        connNum,
+                                        isFast,
+                                        timeout,
+                                        db,
+                                        username);
     }
 }
 

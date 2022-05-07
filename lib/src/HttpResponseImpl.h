@@ -116,13 +116,17 @@ class DROGON_EXPORT HttpResponseImpl : public HttpResponse
 
     const std::string &getHeader(std::string key) const override
     {
-        transform(key.begin(), key.end(), key.begin(), ::tolower);
+        transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
+            return tolower(c);
+        });
         return getHeaderBy(key);
     }
 
     void removeHeader(std::string key) override
     {
-        transform(key.begin(), key.end(), key.begin(), ::tolower);
+        transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
+            return tolower(c);
+        });
         removeHeaderBy(key);
     }
 
@@ -151,14 +155,20 @@ class DROGON_EXPORT HttpResponseImpl : public HttpResponse
     void addHeader(std::string field, const std::string &value) override
     {
         fullHeaderString_.reset();
-        transform(field.begin(), field.end(), field.begin(), ::tolower);
+        transform(field.begin(),
+                  field.end(),
+                  field.begin(),
+                  [](unsigned char c) { return tolower(c); });
         headers_[std::move(field)] = value;
     }
 
     void addHeader(std::string field, std::string &&value) override
     {
         fullHeaderString_.reset();
-        transform(field.begin(), field.end(), field.begin(), ::tolower);
+        transform(field.begin(),
+                  field.end(),
+                  field.begin(),
+                  [](unsigned char c) { return tolower(c); });
         headers_[std::move(field)] = std::move(value);
     }
 
@@ -311,6 +321,16 @@ class DROGON_EXPORT HttpResponseImpl : public HttpResponse
         sendfileRange_.first = offset;
         sendfileRange_.second = len;
     }
+    const std::function<std::size_t(char *, std::size_t)> &streamCallback()
+        const override
+    {
+        return streamCallback_;
+    }
+    void setStreamCallback(
+        const std::function<std::size_t(char *, std::size_t)> &callback)
+    {
+        streamCallback_ = callback;
+    }
     void makeHeaderString()
     {
         fullHeaderString_ = std::make_shared<trantor::MsgBuffer>(128);
@@ -440,6 +460,7 @@ class DROGON_EXPORT HttpResponseImpl : public HttpResponse
     ssize_t expriedTime_{-1};
     std::string sendfileName_;
     SendfileRange sendfileRange_{0, 0};
+    std::function<std::size_t(char *, std::size_t)> streamCallback_;
 
     mutable std::shared_ptr<Json::Value> jsonPtr_;
 
