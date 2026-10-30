@@ -18,8 +18,10 @@
 #include "HttpUtils.h"
 #include <drogon/HttpViewData.h>
 #include <drogon/IOThreadStorage.h>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <cstdio>
 #include <string>
@@ -1067,7 +1069,25 @@ void HttpResponseImpl::addHeader(const char *start,
                 }
                 else if (cookie_name == "max-age")
                 {
-                    cookie.setMaxAge(std::stoi(cookie_value));
+                    const std::string_view maxAgeValue = utils::trim(
+                        std::string_view(cookie_value));
+                    int maxAge;
+                    const char *begin = maxAgeValue.data();
+                    const char *valueEnd = begin + maxAgeValue.size();
+                    auto result = std::from_chars(begin, valueEnd, maxAge);
+                    if (result.ptr == valueEnd)
+                    {
+                        if (result.ec == std::errc{})
+                        {
+                            cookie.setMaxAge(maxAge);
+                        }
+                        else if (result.ec == std::errc::result_out_of_range)
+                        {
+                            cookie.setMaxAge(maxAgeValue.front() == '-'
+                                                 ? (std::numeric_limits<int>::min)()
+                                                 : (std::numeric_limits<int>::max)());
+                        }
+                    }
                 }
             }
         }
