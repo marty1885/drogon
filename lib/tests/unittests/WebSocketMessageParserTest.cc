@@ -96,3 +96,41 @@ DROGON_TEST(WebSocketRejectsInvalidFragmentSequence)
     appendFrame(secondBuffer, 0x82, "second");
     CHECK(!secondParser.parse(&secondBuffer));
 }
+
+DROGON_TEST(WebSocketRejectsReservedBits)
+{
+    for (unsigned char reservedBit : {0x40, 0x20, 0x10})
+    {
+        WebSocketMessageParser parser;
+        trantor::MsgBuffer buffer;
+        appendFrame(buffer,
+                    static_cast<unsigned char>(0x81 | reservedBit),
+                    "A");
+        CHECK(!parser.parse(&buffer));
+    }
+}
+
+DROGON_TEST(WebSocketValidatesTextUTF8AcrossFragments)
+{
+    WebSocketMessageParser parser;
+    trantor::MsgBuffer buffer;
+    appendFrame(buffer, 0x01, "\xe2");
+    appendFrame(buffer, 0x80, "\x82\xac");
+    CHECK(parser.parse(&buffer));
+    std::string message;
+    WebSocketMessageType type;
+    CHECK(parser.gotAll(message, type));
+    CHECK(type == WebSocketMessageType::Text);
+    CHECK(message == "\xe2\x82\xac");
+
+    WebSocketMessageParser invalidParser;
+    trantor::MsgBuffer invalidBuffer;
+    appendFrame(invalidBuffer, 0x01, "\xc0");
+    appendFrame(invalidBuffer, 0x80, "\xaf");
+    CHECK(!invalidParser.parse(&invalidBuffer));
+
+    WebSocketMessageParser singleFrameParser;
+    trantor::MsgBuffer singleFrameBuffer;
+    appendFrame(singleFrameBuffer, 0x81, "\xc0\xaf");
+    CHECK(!singleFrameParser.parse(&singleFrameBuffer));
+}

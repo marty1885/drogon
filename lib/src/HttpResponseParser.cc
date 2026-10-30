@@ -20,6 +20,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <limits>
+#include <string_view>
 
 using namespace trantor;
 using namespace drogon;
@@ -42,38 +43,33 @@ HttpResponseParser::HttpResponseParser(const trantor::TcpConnectionPtr &connPtr)
 
 bool HttpResponseParser::processResponseLine(const char *begin, const char *end)
 {
-    const char *start = begin;
-    const char *space = std::find(start, end, ' ');
-    if (space != end)
-    {
-        LOG_TRACE << *(space - 1);
-        if (*(space - 1) == '1')
-        {
-            responsePtr_->setVersion(Version::kHttp11);
-        }
-        else if (*(space - 1) == '0')
-        {
-            responsePtr_->setVersion(Version::kHttp10);
-        }
-        else
-        {
-            return false;
-        }
-    }
+    std::string_view remain(begin, static_cast<size_t>(end - begin));
+    const auto versionEnd = remain.find(' ');
+    if (versionEnd == std::string_view::npos)
+        return false;
 
-    start = space + 1;
-    space = std::find(start, end, ' ');
-    if (space != end)
-    {
-        std::string status_code(start, space - start);
-        std::string status_message(space + 1, end - space - 1);
-        LOG_TRACE << status_code << " " << status_message;
-        auto code = atoi(status_code.c_str());
-        responsePtr_->setStatusCode(HttpStatusCode(code));
+    const auto version = remain.substr(0, versionEnd);
+    if (version == "HTTP/1.1")
+        responsePtr_->setVersion(Version::kHttp11);
+    else if (version == "HTTP/1.0")
+        responsePtr_->setVersion(Version::kHttp10);
+    else
+        return false;
 
-        return true;
-    }
-    return false;
+    remain.remove_prefix(versionEnd + 1);
+    if (remain.size() < 4 || remain[3] != ' ')
+        return false;
+
+    const auto statusCode = remain.substr(0, 3);
+    if (!std::all_of(statusCode.begin(), statusCode.end(), [](char c) {
+            return c >= '0' && c <= '9';
+        }))
+        return false;
+
+    const int code = (statusCode[0] - '0') * 100 + (statusCode[1] - '0') * 10 +
+                     (statusCode[2] - '0');
+    responsePtr_->setStatusCode(static_cast<HttpStatusCode>(code));
+    return true;
 }
 
 bool HttpResponseParser::parseResponseOnClose()

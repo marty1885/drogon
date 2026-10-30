@@ -14,6 +14,7 @@
 
 #include "WebSocketConnectionImpl.h"
 #include "HttpAppFrameworkImpl.h"
+#include <drogon/utils/Utilities.h>
 #include <json/value.h>
 #include <json/writer.h>
 #include <thread>
@@ -271,6 +272,11 @@ bool WebSocketMessageParser::parse(trantor::MsgBuffer *buffer, bool isServer)
     gotAll_ = false;
     while (buffer->readableBytes() >= 2)
     {
+        if (((*buffer)[0] & 0x70) != 0)
+        {
+            LOG_ERROR << "Bad frame: reserved bits set without an extension";
+            return false;
+        }
         unsigned char opcode = (*buffer)[0] & 0x0f;
         bool isControlFrame = false;
         WebSocketMessageType frameType = WebSocketMessageType::Unknown;
@@ -440,6 +446,12 @@ bool WebSocketMessageParser::parse(trantor::MsgBuffer *buffer, bool isServer)
         fragmented_ = !isFin;
         if (isFin)
         {
+            if (type_ == WebSocketMessageType::Text &&
+                !utils::isValidUTF8(message_))
+            {
+                LOG_ERROR << "Bad frame: invalid UTF-8 in text message";
+                return false;
+            }
             completedMessage_.swap(message_);
             completedType_ = type_;
             gotAll_ = true;
