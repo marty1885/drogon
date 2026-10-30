@@ -29,6 +29,7 @@ set(UNITTEST_SOURCES
     unittests/StringOpsTest.cc
     unittests/ControllerCreationTest.cc
     unittests/MultiPartParserTest.cc
+    unittests/RestfulControllerSqlTest.cc
     unittests/SlashRemoverTest.cc
     unittests/UtilitiesTest.cc
     unittests/UuidUnittest.cc
