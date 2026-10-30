@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <drogon/utils/Utilities.h>
 #include <cctype>
 #include <string_view>
 #include <utility>
@@ -170,6 +171,95 @@ inline bool parseHeaderParameter(std::string_view headerValue,
         }
     }
     return false;
+}
+
+inline bool parseMultipartBoundary(std::string_view contentType,
+                                   std::string_view &boundary)
+{
+    constexpr std::string_view mediaType = "multipart/form-data";
+    constexpr std::string_view boundaryName = "boundary";
+    constexpr std::string_view boundaryChars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        "0123456789'()+_,-./:=? ";
+    constexpr std::string_view tokenChars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        "0123456789'+_-.";
+
+    const auto semi = contentType.find(';');
+    if (semi == std::string_view::npos)
+    {
+        return false;
+    }
+    const auto type = trim(contentType.substr(0, semi));
+    if (type.size() != mediaType.size() ||
+        !startsWithIgnoreCase(type, mediaType))
+    {
+        return false;
+    }
+
+    std::string_view remain = contentType.substr(semi + 1);
+    bool found = false;
+    while (!remain.empty())
+    {
+        size_t end = 0;
+        bool quoted = false;
+        for (; end < remain.size(); ++end)
+        {
+            const char c = remain[end];
+            if (quoted && c == '\\' && end + 1 < remain.size())
+            {
+                ++end;
+            }
+            else if (c == '"')
+            {
+                quoted = !quoted;
+            }
+            else if (c == ';' && !quoted)
+            {
+                break;
+            }
+        }
+        if (quoted)
+        {
+            return false;
+        }
+        const auto parameter = trim(remain.substr(0, end));
+        remain = end == remain.size() ? std::string_view{}
+                                      : remain.substr(end + 1);
+        const auto equal = parameter.find('=');
+        if (equal == std::string_view::npos)
+        {
+            return false;
+        }
+        const auto name = trim(parameter.substr(0, equal));
+        auto value = trim(parameter.substr(equal + 1));
+        const bool quotedValue = !value.empty() && value.front() == '"';
+        if (quotedValue)
+        {
+            if (value.size() < 2 || value.back() != '"')
+            {
+                return false;
+            }
+            value = value.substr(1, value.size() - 2);
+        }
+        if (name.size() == boundaryName.size() &&
+            startsWithIgnoreCase(name, boundaryName))
+        {
+            if (found || value.empty() || value.size() > 70 ||
+                value.back() == ' ' ||
+                value.find_first_not_of(boundaryChars) !=
+                    std::string_view::npos ||
+                (!quotedValue &&
+                 value.find_first_not_of(tokenChars) !=
+                     std::string_view::npos))
+            {
+                return false;
+            }
+            boundary = value;
+            found = true;
+        }
+    }
+    return found;
 }
 
 }  // namespace utils

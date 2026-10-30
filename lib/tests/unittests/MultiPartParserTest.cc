@@ -2,6 +2,7 @@
 #include <drogon/drogon_test.h>
 #include <drogon/HttpRequest.h>
 #include "../../lib/src/MultipartStreamParser.h"
+#include <algorithm>
 
 DROGON_TEST(MultiPartParser)
 {
@@ -206,4 +207,113 @@ DROGON_TEST(MultiPartStreamParser)
     check(3);
     check(7);
     check(20);
+}
+
+DROGON_TEST(MultiPartStreamParserBoundaryPrefixInBody)
+{
+    static const std::string body =
+        "--12345\r\n"
+        "Content-Disposition: form-data; name=\"upload\"; filename=\"x\"\r\n"
+        "\r\n"
+        "before\r\n--12345Xafter\r\n"
+        "--12345\r\n"
+        "Content-Disposition: form-data; name=\"empty\"\r\n"
+        "\r\n"
+        "\r\n--12345--";
+
+    for (size_t step : {1u, 2u, 7u, 32u, 256u})
+    {
+        drogon::MultipartStreamParser parser(
+            "multipart/form-data; boundary=12345");
+        std::vector<std::string> parts;
+        size_t endCount = 0;
+        for (size_t i = 0; i < body.size(); i += step)
+        {
+            const auto length = std::min(step, body.size() - i);
+            parser.parse(
+                body.data() + i,
+                length,
+                [&parts](drogon::MultipartHeader) { parts.emplace_back(); },
+                [&parts, &endCount](const char *data, size_t length) {
+                    if (length == 0)
+                    {
+                        ++endCount;
+                    }
+                    else
+                    {
+                        parts.back().append(data, length);
+                    }
+                });
+            MANDATE(parser.isValid());
+        }
+        MANDATE(parser.isFinished());
+        MANDATE(parts.size() == 2);
+        CHECK(parts[0] == "before\r\n--12345Xafter");
+        CHECK(parts[1].empty());
+        CHECK(endCount == 2);
+    }
+}
+
+DROGON_TEST(MultiPartBoundaryGrammar)
+{
+    const std::string body =
+        "--Abc\r\n"
+        "Content-Disposition: form-data; name=\"upload\"; filename=\"x\"\r\n"
+        "\r\n"
+        "bare Abc and --AbcX and \r\n--AbcX in a file\r\n"
+        "--Abc--";
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Post);
+    req->setBody(body);
+
+    const std::string validType =
+        "multipart/form-data; other=\"x; boundary=wrong\"; BOUNDARY=Abc";
+    req->addHeader("content-type", validType);
+    drogon::MultiPartParser buffered;
+    CHECK(buffered.parse(req) == 0);
+    auto files = buffered.getFilesMap();
+    MANDATE(files.size() == 1);
+    CHECK(files.at("upload").fileContent() ==
+          "bare Abc and --AbcX and \r\n--AbcX in a file");
+
+    drogon::MultipartStreamParser stream(validType);
+    std::string streamed;
+    stream.parse(body.data(),
+                 body.size(),
+                 [](drogon::MultipartHeader) {},
+                 [&streamed](const char *data, size_t length) {
+                     streamed.append(data, length);
+                 });
+    CHECK(stream.isValid());
+    CHECK(stream.isFinished());
+    CHECK(streamed == files.at("upload").fileContent());
+
+    const std::vector<std::string> invalidTypes = {
+        "multipart/form-data; boundary=",
+        "multipart/form-data; boundary=Abc; boundary=Other",
+        "multipart/form-data; boundary=\"bad;one\"",
+        "multipart/form-data; boundary=\"Abc\"junk",
+        "multipart/form-data; boundary=Abc:Def",
+        "multipart/form-data; boundary=" + std::string(71, 'A'),
+        "multipart/form-datax; boundary=Abc",
+    };
+    for (const auto &type : invalidTypes)
+    {
+        req->addHeader("content-type", type);
+        drogon::MultiPartParser rejected;
+        CHECK(rejected.parse(req) == -1);
+        drogon::MultipartStreamParser rejectedStream(type);
+        CHECK(!rejectedStream.isValid());
+    }
+    drogon::MultipartStreamParser lineBreak(
+        "multipart/form-data; boundary=Abc\r\nInjected: x");
+    CHECK(!lineBreak.isValid());
+    drogon::MultipartStreamParser quotedSpecial(
+        "multipart/form-data; boundary=\"Abc:Def\"");
+    CHECK(quotedSpecial.isValid());
+
+    req->addHeader("content-type", "multipart/form-data; boundary=Abc");
+    req->setBody(body.substr(0, body.size() - 7));  // no closing delimiter
+    drogon::MultiPartParser incomplete;
+    CHECK(incomplete.parse(req) == -1);
 }
