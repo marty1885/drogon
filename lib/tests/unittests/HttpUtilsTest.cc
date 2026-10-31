@@ -39,3 +39,41 @@ DROGON_TEST(IsValidCookie)
     cookie.setPath("/\nX-Injected: 1");
     CHECK(!isValidCookie(cookie));
 }
+
+DROGON_TEST(WebSocketHandshakeFields)
+{
+    CHECK(containsHttpToken("keep-alive, Upgrade", "upgrade"));
+    CHECK(containsHttpToken("UPGRADE", "upgrade"));
+    CHECK(!containsHttpToken("notupgrade", "upgrade"));
+    CHECK(!containsHttpToken("keep-alive, upgraded", "upgrade"));
+}
+
+DROGON_TEST(IterateHeaderField)
+{
+    auto fields = iterateHeaderField(" keep-alive , Upgrade, \"a,b\", ");
+    CHECK(fields.next() == "keep-alive");
+    CHECK(fields.next() == "Upgrade");
+    CHECK(fields.next() == "\"a,b\"");
+    CHECK(fields.next() == "");
+    CHECK(!fields.next());
+
+    auto empty = iterateHeaderField("");
+    CHECK(empty.next() == "");
+    CHECK(!empty.next());
+}
+
+DROGON_TEST(IterateHeaderParameters)
+{
+    auto [master, parameters] =
+        iterateHeaderParameters(" text/plain ; charset = utf-8; title=\"a;b\"");
+    CHECK(master == "text/plain");
+    auto first = parameters.next();
+    CHECK(first.has_value());
+    CHECK(first->first == "charset");
+    CHECK(first->second == "utf-8");
+    auto second = parameters.next();
+    CHECK(second.has_value());
+    CHECK(second->first == "title");
+    CHECK(second->second == "\"a;b\"");
+    CHECK(!parameters.next());
+}

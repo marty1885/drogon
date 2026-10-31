@@ -115,6 +115,7 @@ class WebSocketConnectionImpl final
     trantor::InetAddress localAddr_;
     trantor::InetAddress peerAddr_;
     bool isServer_{true};
+    bool closeReceived_{false};
     WebSocketMessageParser parser_;
     trantor::TimerId pingTimerId_{trantor::InvalidTimerId};
     std::vector<uint32_t> masks_;

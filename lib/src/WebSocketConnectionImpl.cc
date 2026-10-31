@@ -403,6 +403,11 @@ bool WebSocketMessageParser::parse(trantor::MsgBuffer *buffer, bool isServer)
                 return false;
             }
         }
+        if (frameType == WebSocketMessageType::Close && length == 1)
+        {
+            LOG_ERROR << "Bad frame: Close payload has only one byte";
+            return false;
+        }
         size_t headerLen = indexFirstMask + (isMasked != 0 ? 4 : 0);
         if (buffer->readableBytes() < headerLen ||
             length > buffer->readableBytes() - headerLen)
@@ -435,6 +440,13 @@ bool WebSocketMessageParser::parse(trantor::MsgBuffer *buffer, bool isServer)
 
         if (isControlFrame)
         {
+            if (frameType == WebSocketMessageType::Close &&
+                payload.size() > 2 &&
+                !utils::isValidUTF8(std::string_view(payload).substr(2)))
+            {
+                LOG_ERROR << "Bad frame: invalid UTF-8 in Close reason";
+                return false;
+            }
             completedType_ = frameType;
             gotAll_ = true;
             return true;
@@ -466,6 +478,11 @@ void WebSocketConnectionImpl::onNewMessage(
     trantor::MsgBuffer *buffer)
 {
     auto self = shared_from_this();
+    if (closeReceived_)
+    {
+        buffer->retrieveAll();
+        return;
+    }
     while (buffer->readableBytes() > 0)
     {
         auto success = parser_.parse(buffer, isServer_);
@@ -482,6 +499,7 @@ void WebSocketConnectionImpl::onNewMessage(
                 }
                 else if (type == WebSocketMessageType::Close)
                 {
+                    closeReceived_ = true;
                     // rfc6455-5.5.1: reply with the received close frame so
                     // the peer sees the status code it sent instead of an
                     // abnormal closure (1006). Skip the reply when this side
@@ -500,6 +518,11 @@ void WebSocketConnectionImpl::onNewMessage(
                 // LOG_TRACE << "new message received: " << message
                 //           << "\n(type=" << (int)type << ")";
                 messageCallback_(std::move(message), self, type);
+                if (type == WebSocketMessageType::Close)
+                {
+                    buffer->retrieveAll();
+                    return;
+                }
             }
             else
             {

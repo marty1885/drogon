@@ -134,3 +134,26 @@ DROGON_TEST(WebSocketValidatesTextUTF8AcrossFragments)
     appendFrame(singleFrameBuffer, 0x81, "\xc0\xaf");
     CHECK(!singleFrameParser.parse(&singleFrameBuffer));
 }
+
+DROGON_TEST(WebSocketRejectsMalformedClosePayload)
+{
+    WebSocketMessageParser shortCloseParser;
+    trantor::MsgBuffer shortCloseBuffer;
+    appendFrame(shortCloseBuffer, 0x88, "\x03");
+    CHECK(!shortCloseParser.parse(&shortCloseBuffer));
+
+    WebSocketMessageParser invalidReasonParser;
+    trantor::MsgBuffer invalidReasonBuffer;
+    appendFrame(invalidReasonBuffer, 0x88, "\x03\xe8\xc0\xaf");
+    CHECK(!invalidReasonParser.parse(&invalidReasonBuffer));
+
+    WebSocketMessageParser validCloseParser;
+    trantor::MsgBuffer validCloseBuffer;
+    appendFrame(validCloseBuffer, 0x88, "\x03\xe8\xe2\x82\xac");
+    CHECK(validCloseParser.parse(&validCloseBuffer));
+    std::string message;
+    WebSocketMessageType type;
+    CHECK(validCloseParser.gotAll(message, type));
+    CHECK(type == WebSocketMessageType::Close);
+    CHECK(message == "\x03\xe8\xe2\x82\xac");
+}

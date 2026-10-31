@@ -16,8 +16,10 @@
 
 #include <trantor/utils/MsgBuffer.h>
 #include <drogon/HttpTypes.h>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace drogon
 {
@@ -61,6 +63,54 @@ bool isValidCookie(const Cookie &cookie);
 /// Return true if the string contains a CR or LF character, which is not
 /// allowed in HTTP field names or values (RFC 9110, section 5.5).
 bool containsCRLF(std::string_view str);
+
+namespace internal
+{
+// A view over delimiter-separated header values. Delimiters inside quoted
+// strings are kept in the value. next() returns nullopt at the end; an empty
+// string_view represents an empty field.
+class HttpHeaderFieldIterator
+{
+  public:
+    HttpHeaderFieldIterator(std::string_view value, char delimiter)
+        : remaining_(value), delimiter_(delimiter)
+    {
+    }
+
+    std::optional<std::string_view> next();
+
+  private:
+    std::string_view remaining_;
+    char delimiter_;
+    bool done_{false};
+};
+
+// Parameter values are returned as raw views, including any quotes. This is
+// a splitter, not a validator or a quoted-string decoder.
+class HttpHeaderParameterIterator
+{
+  public:
+    explicit HttpHeaderParameterIterator(HttpHeaderFieldIterator fields)
+        : fields_(fields)
+    {
+    }
+
+    std::optional<std::pair<std::string_view, std::string_view>> next();
+
+  private:
+    HttpHeaderFieldIterator fields_;
+};
+}  // namespace internal
+
+internal::HttpHeaderFieldIterator iterateHeaderField(std::string_view value);
+
+// Split a master value such as "text/plain" from its semicolon-separated
+// parameters. The returned views refer to the original header value.
+std::pair<std::string_view, internal::HttpHeaderParameterIterator>
+iterateHeaderParameters(std::string_view value);
+
+/// Return true if a comma-separated HTTP field contains the given token.
+bool containsHttpToken(std::string_view value, std::string_view token);
 
 inline const std::vector<std::string_view> &getFileExtensions(
     const std::string_view &contentType)
