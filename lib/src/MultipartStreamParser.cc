@@ -13,15 +13,15 @@
  */
 
 #include "MultipartStreamParser.h"
+#include "HttpUtils.h"
 #include <cassert>
-#include "utils/ParsingUtils.h"
 
 using namespace drogon;
-using drogon::utils::parseHeaderParameter;
-using drogon::utils::parseLine;
-using drogon::utils::parseMultipartBoundary;
-using drogon::utils::startsWith;
-using drogon::utils::startsWithIgnoreCase;
+using drogon::internal::parseHeaderParameter;
+using drogon::internal::parseLine;
+using drogon::internal::parseMultipartBoundary;
+using drogon::internal::startsWith;
+using drogon::internal::startsWithIgnoreCase;
 
 MultipartStreamParser::MultipartStreamParser(const std::string &contentType)
 {
@@ -142,7 +142,8 @@ void drogon::MultipartStreamParser::parse(
                     auto pos = remain.find(crlfDashBoundary_);
                     if (pos == std::string_view::npos)
                     {
-                        // Retain enough bytes for a delimiter split across calls.
+                        // Retain enough bytes for a delimiter split across
+                        // calls.
                         const size_t keep = crlfDashBoundary_.size() + 1;
                         if (v.size() > keep)
                         {

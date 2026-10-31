@@ -18,7 +18,6 @@
 #include "HttpFileImpl.h"
 #include <drogon/MultiPart.h>
 #include <drogon/utils/Utilities.h>
-#include "utils/ParsingUtils.h"
 #include <drogon/config.h>
 #include <algorithm>
 #include <fcntl.h>
@@ -30,9 +29,9 @@
 #endif
 
 using namespace drogon;
-using drogon::utils::parseHeaderParameter;
-using drogon::utils::parseLine;
-using drogon::utils::parseMultipartBoundary;
+using drogon::internal::parseHeaderParameter;
+using drogon::internal::parseLine;
+using drogon::internal::parseMultipartBoundary;
 
 const std::vector<HttpFile> &MultiPartParser::getFiles() const
 {
@@ -135,21 +134,15 @@ int MultiPartParser::parseEntity(const HttpRequestPtr &req,
         }
         else if (key == "content-type")
         {
-            auto value = keyAndValue.second;
-            auto semiColonPos =
-                std::find(value.data(), value.data() + value.length(), ';');
-            std::string_view contentType(value.data(),
-                                         semiColonPos - value.data());
-            filePtr->setContentType(parseContentType(contentType));
+            filePtr->setContentType(
+                parseContentType(drogon::internal::headerValueBeforeParameters(
+                    keyAndValue.second)));
         }
         else if (key == "content-transfer-encoding")
         {
-            auto value = keyAndValue.second;
-            auto semiColonPos =
-                std::find(value.data(), value.data() + value.length(), ';');
-
             filePtr->setContentTransferEncoding(
-                std::string{value.data(), semiColonPos});
+                std::string(drogon::internal::headerValueBeforeParameters(
+                    keyAndValue.second)));
         }
     }
     if (!filePtr->getFileName().empty())
@@ -191,10 +184,10 @@ int MultiPartParser::parse(const HttpRequestPtr &req,
         const auto suffix = remain.substr(pos + firstBoundary.size());
         if ((offset == 0 ||
              (offset >= 2 && content.substr(offset - 2, 2) == "\r\n")) &&
-            (utils::startsWith(suffix, "\r\n") ||
-             utils::startsWith(suffix, "--")))
+            (internal::startsWith(suffix, "\r\n") ||
+             internal::startsWith(suffix, "--")))
         {
-            if (utils::startsWith(suffix, "--"))
+            if (internal::startsWith(suffix, "--"))
             {
                 return 0;  // empty multipart body
             }
@@ -215,15 +208,15 @@ int MultiPartParser::parse(const HttpRequestPtr &req,
                 return -1;
             }
             const auto suffix = remain.substr(pos + delimiter.size());
-            if (utils::startsWith(suffix, "\r\n") ||
-                utils::startsWith(suffix, "--"))
+            if (internal::startsWith(suffix, "\r\n") ||
+                internal::startsWith(suffix, "--"))
             {
                 const auto length = part.size() - remain.size() + pos;
                 if (parseEntity(req, part.data(), part.data() + length) != 0)
                 {
                     return -1;
                 }
-                if (utils::startsWith(suffix, "--"))
+                if (internal::startsWith(suffix, "--"))
                 {
                     return 0;
                 }

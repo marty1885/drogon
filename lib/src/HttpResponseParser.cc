@@ -116,12 +116,8 @@ bool HttpResponseParser::parseResponse(MsgBuffer *buf)
             const char *crlf = buf->findCRLF();
             if (crlf)
             {
-                const char *colon = std::find(buf->peek(), crlf, ':');
-                if (colon != crlf)
-                {
-                    responsePtr_->addHeader(buf->peek(), colon, crlf);
-                }
-                else
+                const std::string_view line(buf->peek(), crlf - buf->peek());
+                if (!responsePtr_->addHeader(line))
                 {
                     const std::string &len =
                         responsePtr_->getHeaderBy("content-length");

@@ -278,19 +278,39 @@ DROGON_TEST(MultiPartBoundaryGrammar)
 
     drogon::MultipartStreamParser stream(validType);
     std::string streamed;
-    stream.parse(body.data(),
-                 body.size(),
-                 [](drogon::MultipartHeader) {},
-                 [&streamed](const char *data, size_t length) {
-                     streamed.append(data, length);
-                 });
+    stream.parse(
+        body.data(),
+        body.size(),
+        [](drogon::MultipartHeader) {},
+        [&streamed](const char *data, size_t length) {
+            streamed.append(data, length);
+        });
     CHECK(stream.isValid());
     CHECK(stream.isFinished());
     CHECK(streamed == files.at("upload").fileContent());
 
+    for (const auto &type : {"multipart/form-data; boundary= Abc",
+                             "multipart/form-data; boundary=Abc "})
+    {
+        drogon::MultipartStreamParser withWhitespace(type);
+        CHECK(withWhitespace.isValid());
+    }
+    for (const auto &type :
+         {"multipart/form-data; charset=UTF-8; boundary=Abc",
+          "multipart/form-data; charset=UTF-8; boundary=\"Abc\"",
+          "Multipart/Form-Data; charset=UTF-8; other=x; BOUNDARY=Abc"})
+    {
+        req->addHeader("content-type", type);
+        drogon::MultiPartParser withExtraParameter;
+        CHECK(withExtraParameter.parse(req) == 0);
+        drogon::MultipartStreamParser streamedExtra(type);
+        CHECK(streamedExtra.isValid());
+    }
+
     const std::vector<std::string> invalidTypes = {
         "multipart/form-data; boundary=",
         "multipart/form-data; boundary=Abc; boundary=Other",
+        "multipart/form-data; charset; boundary=Abc",
         "multipart/form-data; boundary=\"bad;one\"",
         "multipart/form-data; boundary=\"Abc\"junk",
         "multipart/form-data; boundary=Abc:Def",
